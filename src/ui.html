@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; margin: 0; user-select: none; }
+  body { background: #1e1f22; color: #e3e3e3; font: 13px system-ui, sans-serif; overflow: hidden; }
+  #strip { display: flex; align-items: flex-end; height: 36px; padding: 6px 8px 0; gap: 2px; background: #151618; }
+  .tab { display: flex; align-items: center; gap: 6px; width: 200px; min-width: 60px; height: 30px; padding: 0 8px 0 12px;
+         background: #25262a; border-radius: 8px 8px 0 0; cursor: default; }
+  .tab.active { background: #33353a; }
+  .tab.sleeping .t { font-style: italic; opacity: .5; }
+  .t { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .x { width: 18px; height: 18px; line-height: 18px; text-align: center; border-radius: 50%; opacity: .6; }
+  .x:hover, button:hover { background: #4a4c52; opacity: 1; }
+  #plus { width: 28px; height: 28px; margin-left: 4px; align-self: center; font-size: 16px; }
+  #bar { display: flex; align-items: center; gap: 4px; height: 44px; padding: 0 8px; background: #33353a; }
+  button { background: none; border: 0; color: inherit; width: 30px; height: 30px; border-radius: 50%; font-size: 15px; cursor: pointer; }
+  #url { flex: 1; height: 30px; padding: 0 14px; border: 0; border-radius: 15px; outline: none;
+         background: #1e1f22; color: inherit; font-size: 13px; user-select: text; }
+  #url:focus { box-shadow: 0 0 0 2px #6b9cff; }
+</style>
+</head>
+<body>
+<div id="strip"></div>
+<div id="bar">
+  <button id="back" title="Geri">&#8592;</button>
+  <button id="fwd" title="İleri">&#8594;</button>
+  <button id="reload" title="Yenile">&#10227;</button>
+  <input id="url" placeholder="Ara veya adres gir" spellcheck="false" autocomplete="off">
+</div>
+<script>
+  const send = m => window.ipc.postMessage(m);
+  const strip = document.getElementById('strip');
+  const url = document.getElementById('url');
+
+  // Rust'tan gelen sekme listesini çiz
+  window.setTabs = (tabs, active) => {
+    strip.innerHTML = '';
+    tabs.forEach((t, i) => {
+      const el = document.createElement('div');
+      el.className = 'tab' + (i === active ? ' active' : '') + (t.sleeping ? ' sleeping' : '');
+      el.title = t.url;
+      el.onclick = () => send('switch:' + t.id);
+      const title = document.createElement('span');
+      title.className = 't';
+      title.textContent = t.title || t.url || 'Yeni sekme';
+      const x = document.createElement('span');
+      x.className = 'x';
+      x.textContent = '×';
+      x.onclick = e => { e.stopPropagation(); send('close:' + t.id); };
+      el.append(title, x);
+      strip.append(el);
+    });
+    const plus = document.createElement('button');
+    plus.id = 'plus';
+    plus.textContent = '+';
+    plus.onclick = () => send('new');
+    strip.append(plus);
+    if (document.activeElement !== url && tabs[active]) url.value = tabs[active].url;
+  };
+
+  url.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && url.value.trim()) { send('go:' + url.value.trim()); url.blur(); }
+  });
+  url.addEventListener('focus', () => url.select());
+  document.getElementById('back').onclick = () => send('back');
+  document.getElementById('fwd').onclick = () => send('forward');
+  document.getElementById('reload').onclick = () => send('reload');
+  send('ready');
+</script>
+</body>
+</html>
