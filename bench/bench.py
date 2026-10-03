@@ -14,7 +14,7 @@ PORT = 8123
 PAGES = 10
 SNAPSHOTS = [40, 160]
 LOAD_TIMEOUT = 90
-SITES = [f"http://127.0.0.1:{PORT}/page/{n}" for n in range(PAGES)]
+SITES = [f"http://site{n}.test:{PORT}/page/{n}" for n in range(PAGES)]
 
 libc = ctypes.CDLL("/usr/lib/libSystem.B.dylib")
 libc.responsibility_get_pid_responsible_for_pid.argtypes = [ctypes.c_int]
@@ -103,7 +103,7 @@ def footprint_mb(pids):
 
 
 def launch(browser, profile):
-    if browser == "cheetah":
+    if browser.startswith("cheetah"):
         proc = subprocess.Popen(["target/release/cheetah", *SITES])
         return "resp", proc.pid, proc.kill
     if browser == "chrome":

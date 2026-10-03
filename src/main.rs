@@ -31,6 +31,7 @@ struct Tab {
     url: String,
     title: String,
     view: Option<WebView>,
+    asleep: bool,
     last_active: Instant,
 }
 
@@ -92,7 +93,9 @@ impl App {
                 let _ = title_proxy.send_event(UserEvent::Title(id, title));
             })
             .with_navigation_handler(move |url| {
-                let _ = nav_proxy.send_event(UserEvent::Address(id, url));
+                if url != "about:blank" {
+                    let _ = nav_proxy.send_event(UserEvent::Address(id, url));
+                }
                 true
             })
             .build_as_child(&self.window)
@@ -108,6 +111,7 @@ impl App {
             url: url.to_string(),
             title: String::new(),
             view: Some(view),
+            asleep: false,
             last_active: Instant::now(),
         });
         self.activate(self.tabs.len() - 1);
@@ -125,8 +129,14 @@ impl App {
         self.active = index;
         let bounds = self.content_bounds();
         let (id, url) = (self.tabs[index].id, self.tabs[index].url.clone());
-        if self.tabs[index].view.is_none() {
-            self.tabs[index].view = Some(self.create_view(id, &url));
+        if self.tabs[index].asleep {
+            match &self.tabs[index].view {
+                Some(view) => {
+                    let _ = view.load_url(&url);
+                }
+                None => self.tabs[index].view = Some(self.create_view(id, &url)),
+            }
+            self.tabs[index].asleep = false;
         }
         if let Some(view) = &self.tabs[index].view {
             let _ = view.set_bounds(bounds);
@@ -161,7 +171,7 @@ impl App {
         let tabs: Vec<_> = self
             .tabs
             .iter()
-            .map(|t| json!({ "id": t.id, "title": t.title, "url": t.url, "sleeping": t.view.is_none() }))
+            .map(|t| json!({ "id": t.id, "title": t.title, "url": t.url, "sleeping": t.asleep }))
             .collect();
         let script = format!("window.setTabs({}, {})", json!(tabs), self.active);
         let _ = self.toolbar.evaluate_script(&script);
@@ -255,8 +265,14 @@ impl App {
     fn sleep_idle_tabs(&mut self) {
         let mut changed = false;
         for (index, tab) in self.tabs.iter_mut().enumerate() {
-            if index != self.active && tab.view.is_some() && tab.last_active.elapsed() >= SLEEP_AFTER {
-                tab.view = None;
+            if index != self.active && !tab.asleep && tab.last_active.elapsed() >= SLEEP_AFTER {
+                tab.asleep = true;
+                if let Some(view) = &tab.view {
+                    let _ = view.load_url("about:blank");
+                }
+                if !cfg!(target_os = "macos") {
+                    tab.view = None;
+                }
                 changed = true;
             }
         }
@@ -327,13 +343,13 @@ fn main() {
             Event::WindowEvent { event: WindowEvent::Resized(_), .. } => app.resize(),
             Event::UserEvent(UserEvent::Ipc(message)) => app.handle_ipc(&message),
             Event::UserEvent(UserEvent::Title(id, title)) => {
-                if let Some(tab) = app.tabs.iter_mut().find(|t| t.id == id) {
+                if let Some(tab) = app.tabs.iter_mut().find(|t| t.id == id && !t.asleep) {
                     tab.title = title;
                     app.push_state();
                 }
             }
             Event::UserEvent(UserEvent::Address(id, url)) => {
-                if let Some(tab) = app.tabs.iter_mut().find(|t| t.id == id) {
+                if let Some(tab) = app.tabs.iter_mut().find(|t| t.id == id && !t.asleep) {
                     tab.url = url;
                     app.push_state();
                 }

@@ -2,6 +2,13 @@ name: bench
 
 on:
   workflow_dispatch:
+    inputs:
+      browsers:
+        description: JSON list of browsers
+        default: '["cheetah", "chrome", "safari"]'
+      repeats:
+        description: Runs per browser
+        default: "5"
 
 jobs:
   bench:
@@ -9,12 +16,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        browser: [cheetah, chrome, safari]
+        browser: ${{ fromJSON(inputs.browsers) }}
     steps:
       - uses: actions/checkout@v4
+      - name: Map test hosts to loopback
+        run: |
+          for n in 0 1 2 3 4 5 6 7 8 9; do echo "127.0.0.1 site$n.test" | sudo tee -a /etc/hosts; done
+      - name: Use legacy sleep implementation
+        if: matrix.browser == 'cheetah-legacy'
+        run: git checkout cdfb4ad -- src/main.rs
       - name: Build cheetah
-        if: matrix.browser == 'cheetah'
+        if: startsWith(matrix.browser, 'cheetah')
         run: cargo build --release
       - name: Run benchmark
         timeout-minutes: 45
-        run: python3 bench/bench.py ${{ matrix.browser }} 5
+        run: python3 bench/bench.py ${{ matrix.browser }} ${{ inputs.repeats }}
