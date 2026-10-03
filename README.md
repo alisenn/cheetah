@@ -16,7 +16,7 @@ cheetah has no rendering engine of its own. It uses [`tao`](https://github.com/t
   recreated when you switch back. Sleeping tabs are shown dimmed and in italics
 - Bookmark bar: star button to bookmark or unbookmark the current page, click to open, right-click to remove.
   Stored as JSON in the OS config directory (`cheetah/bookmarks.json`)
-- Import: the Import button copies the bookmark bar from Chrome, Edge, Brave, Chromium and Vivaldi (all profiles)
+- Import: the Import button copies the bookmark bar from Chrome, Edge, Brave, Chromium, Vivaldi, Firefox (latest automatic backup) and Safari (macOS, needs Full Disk Access). No extra dependencies: LZ4 decoding is built in and Safari is read through the system `plutil`
 - Dark theme
 
 ## Run
@@ -34,7 +34,7 @@ GDK_BACKEND=x11 cargo run --release
 
 ## Roadmap
 
-- [ ] Import from Firefox and Safari, plus history
+- [ ] Import history
 - [ ] Total memory budget (sleep the oldest tabs when exceeded)
 - [ ] Pin a tab so it never sleeps
 - [ ] Shortcuts (Ctrl/Cmd+T, W, L, R)

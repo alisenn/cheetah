@@ -191,13 +191,17 @@ impl App {
 
     fn import_bookmarks(&mut self) {
         let result = bookmarks::import_all(&mut self.bookmarks);
-        if result.browsers.is_empty() {
-            self.push_status("No bookmarks found in Chrome, Edge, Brave, Chromium or Vivaldi");
-            return;
+        let mut message = if result.browsers.is_empty() {
+            "No bookmarks found".to_string()
+        } else {
+            bookmarks::save(&self.bookmarks);
+            self.push_bookmarks();
+            format!("Imported {} new from {}", result.added, result.browsers.join(", "))
+        };
+        if !result.blocked.is_empty() {
+            message.push_str(&format!(". {} needs Full Disk Access", result.blocked.join(", ")));
         }
-        bookmarks::save(&self.bookmarks);
-        self.push_bookmarks();
-        self.push_status(&format!("Imported {} new from {}", result.added, result.browsers.join(", ")));
+        self.push_status(&message);
     }
 
     fn navigate(&mut self, url: String) {
