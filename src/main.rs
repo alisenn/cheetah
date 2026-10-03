@@ -1,3 +1,4 @@
+mod adblock;
 mod bookmarks;
 
 use std::time::{Duration, Instant};
@@ -21,6 +22,7 @@ const SLEEP_AFTER: Duration = Duration::from_secs(120);
 const SLEEP_CHECK_INTERVAL: Duration = Duration::from_secs(15);
 
 enum UserEvent {
+    AdblockReady,
     Ipc(String),
     Title(usize, String),
     Address(usize, String),
@@ -86,7 +88,7 @@ impl App {
 
     fn create_view(&self, id: usize, url: &str) -> WebView {
         let (title_proxy, nav_proxy) = (self.proxy.clone(), self.proxy.clone());
-        WebViewBuilder::new()
+        let view = WebViewBuilder::new()
             .with_url(url)
             .with_bounds(self.content_bounds())
             .with_document_title_changed_handler(move |title| {
@@ -99,7 +101,9 @@ impl App {
                 true
             })
             .build_as_child(&self.window)
-            .expect("failed to create tab webview")
+            .expect("failed to create tab webview");
+        adblock::apply(&view);
+        view
     }
 
     fn open_tab(&mut self, url: &str) {
@@ -188,7 +192,9 @@ impl App {
     }
 
     fn toggle_bookmark(&mut self) {
-        let tab = &self.tabs[self.active];
+        let Some(tab) = self.tabs.get(self.active) else {
+            return;
+        };
         if let Some(index) = self.bookmarks.iter().position(|b| b.url == tab.url) {
             self.bookmarks.remove(index);
         } else {
@@ -215,6 +221,9 @@ impl App {
     }
 
     fn navigate(&mut self, url: String) {
+        if self.tabs.get(self.active).is_none() {
+            return;
+        }
         if let Some(view) = &self.tabs[self.active].view {
             let _ = view.load_url(&url);
         }
@@ -223,7 +232,7 @@ impl App {
     }
 
     fn handle_ipc(&mut self, message: &str) {
-        let active_view = self.tabs[self.active].view.as_ref();
+        let active_view = self.tabs.get(self.active).and_then(|t| t.view.as_ref());
         match message {
             "ready" => {
                 self.toolbar_ready = true;
@@ -327,9 +336,11 @@ fn main() {
     if urls.is_empty() {
         urls.push(HOME_URL.to_string());
     }
-    for url in &urls {
-        app.open_tab(url);
-    }
+    let ready_proxy = app.proxy.clone();
+    adblock::compile(move || {
+        let _ = ready_proxy.send_event(UserEvent::AdblockReady);
+    });
+    let mut pending_urls = Some(urls);
 
     let mut last_sleep_check = Instant::now();
     event_loop.run(move |event, _, control_flow| {
@@ -341,6 +352,11 @@ fn main() {
         match event {
             Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => *control_flow = ControlFlow::Exit,
             Event::WindowEvent { event: WindowEvent::Resized(_), .. } => app.resize(),
+            Event::UserEvent(UserEvent::AdblockReady) => {
+                for url in pending_urls.take().into_iter().flatten() {
+                    app.open_tab(&url);
+                }
+            }
             Event::UserEvent(UserEvent::Ipc(message)) => app.handle_ipc(&message),
             Event::UserEvent(UserEvent::Title(id, title)) => {
                 if let Some(tab) = app.tabs.iter_mut().find(|t| t.id == id && !t.asleep) {
