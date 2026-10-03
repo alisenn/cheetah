@@ -274,7 +274,7 @@ fn main() {
     let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
     let proxy = event_loop.create_proxy();
     let window = WindowBuilder::new()
-        .with_title("wolf")
+        .with_title("cheetah")
         .with_inner_size(tao::dpi::LogicalSize::new(1200.0, 800.0))
         .build(&event_loop)
         .expect("failed to create window");

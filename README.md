@@ -1,8 +1,8 @@
-# wolf
+# cheetah
 
 A lightweight, open-source desktop browser that uses very little RAM. Runs on Windows, macOS and Linux.
 
-wolf has no rendering engine of its own. It uses [`tao`](https://github.com/tauri-apps/tao) for the window and
+cheetah has no rendering engine of its own. It uses [`tao`](https://github.com/tauri-apps/tao) for the window and
 [`wry`](https://github.com/tauri-apps/wry) for the system WebView. One process, one window: a toolbar webview
 (tab strip + address bar) on top and one webview per tab below it.
 
@@ -15,7 +15,7 @@ wolf has no rendering engine of its own. It uses [`tao`](https://github.com/taur
 - RAM saving: background tabs idle for 120 s have their webview destroyed (URL and title are kept) and are
   recreated when you switch back. Sleeping tabs are shown dimmed and in italics
 - Bookmark bar: star button to bookmark or unbookmark the current page, click to open, right-click to remove.
-  Stored as JSON in the OS config directory (`wolf/bookmarks.json`)
+  Stored as JSON in the OS config directory (`cheetah/bookmarks.json`)
 - Import: the Import button copies the bookmark bar from Chrome, Edge, Brave, Chromium and Vivaldi (all profiles)
 - Dark theme
 

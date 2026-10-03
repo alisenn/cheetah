@@ -13,7 +13,7 @@ pub struct Bookmark {
 }
 
 fn store_path() -> Option<PathBuf> {
-    dirs::config_dir().map(|dir| dir.join("wolf").join("bookmarks.json"))
+    dirs::config_dir().map(|dir| dir.join("cheetah").join("bookmarks.json"))
 }
 
 pub fn load() -> Vec<Bookmark> {
