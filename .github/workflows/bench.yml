@@ -16,4 +16,5 @@ jobs:
         if: matrix.browser == 'cheetah'
         run: cargo build --release
       - name: Run benchmark
-        run: python3 bench/bench.py ${{ matrix.browser }}
+        timeout-minutes: 45
+        run: python3 bench/bench.py ${{ matrix.browser }} 5
