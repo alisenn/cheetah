@@ -17,7 +17,7 @@ cheetah has no rendering engine of its own. It uses [`tao`](https://github.com/t
 - Bookmark bar: star button to bookmark or unbookmark the current page, click to open, right-click to remove.
   Stored as JSON in the OS config directory (`cheetah/bookmarks.json`)
 - Import: the Import button copies the bookmark bar from Chrome, Edge, Brave, Chromium, Vivaldi, Firefox (latest automatic backup) and Safari (macOS, needs Full Disk Access). No extra dependencies: LZ4 decoding is built in and Safari is read through the system `plutil`
-- Ad and tracker blocking (macOS): about 50 third-party ad/tracker domains are blocked at the network level and common ad containers are hidden, using WebKit content rule lists. Not yet on Windows and Linux
+- Ad and tracker blocking (macOS): a built-in list of about 50 third-party ad/tracker domains is blocked at the network level and common ad containers are hidden, using WebKit content rule lists. Not yet on Windows and Linux. Run `scripts/fetch-blocklist.sh` before building to add Peter Lowe's list (about 3,500 more domains, downloaded locally and not redistributed in this repo; see https://pgl.yoyo.org/adservers/)
 - Dark theme
 
 ## Run

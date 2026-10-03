@@ -52,10 +52,26 @@ const TRACKER_DOMAINS: &[&str] = &[
     "newrelic.com",
 ];
 
+const EXTRA_LIST: &str = include_str!(concat!(env!("OUT_DIR"), "/blocklist.txt"));
+
 const HIDDEN_SELECTORS: &str = ".adsbygoogle, ins.adsbygoogle, [id^='google_ads_iframe'], [id^='div-gpt-ad'], .ad-banner, .ad-container, .advert, .advertisement, .sponsored-ad";
 
+fn blocked_domains() -> Vec<&'static str> {
+    let mut domains: Vec<&str> = TRACKER_DOMAINS.to_vec();
+    domains.extend(
+        EXTRA_LIST
+            .lines()
+            .filter(|line| !line.starts_with('#'))
+            .filter_map(|line| line.split_whitespace().nth(1))
+            .filter(|domain| domain.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')),
+    );
+    domains.sort_unstable();
+    domains.dedup();
+    domains
+}
+
 pub fn rules_json() -> String {
-    let mut rules: Vec<String> = TRACKER_DOMAINS
+    let mut rules: Vec<String> = blocked_domains()
         .iter()
         .map(|domain| {
             let pattern = domain.replace('.', "\\\\.");
@@ -98,7 +114,7 @@ mod platform {
             }
             on_done();
         });
-        let identifier = NSString::from_str("cheetah-adblock-v1");
+        let identifier = NSString::from_str("cheetah-adblock-v2");
         let json = NSString::from_str(&super::rules_json());
         // SAFETY: all arguments are valid and the block outlives the call
         unsafe {
@@ -132,3 +148,12 @@ mod platform {
 }
 
 pub use platform::{apply, compile};
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn rules_are_valid_json() {
+        let parsed: serde_json::Value = serde_json::from_str(&super::rules_json()).unwrap();
+        assert!(parsed.as_array().unwrap().len() > super::TRACKER_DOMAINS.len());
+    }
+}
