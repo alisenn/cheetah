@@ -15,6 +15,7 @@ Kendi render motorunu yazmaz; [`tao`](https://github.com/tauri-apps/tao) (pencer
 - RAM tasarrufu: 120 sn boşta kalan arka plan sekmelerinin webview'ı yok edilir (URL ve başlık saklanır),
   sekmeye geçince yeniden oluşturulur. Uyuyan sekmeler italik ve soluk görünür
 - Pencere boyutu değişince tüm webview'lar yeniden boyutlanır
+- Bellek göstergesi: adres çubuğunun sağında wolf + webview süreçlerinin toplam RAM'i ve uyanık/toplam sekme sayısı (5 sn'de bir güncellenir)
 - Koyu tema
 
 ## Çalıştırma
@@ -32,6 +33,8 @@ GDK_BACKEND=x11 cargo run --release
 
 ## Yol haritası
 
+- [ ] Sekme başına bellek ve "bu sekmeyi uyutma" (sabitleme)
+- [ ] Toplam bellek bütçesi (aşınca en eski sekmeleri uyut)
 - [ ] Kısayollar (Ctrl/Cmd+T, W, L, R)
 - [ ] Yer imleri ve geçmiş
 - [ ] Sekme sürükle-bırak sıralama

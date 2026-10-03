@@ -1,8 +1,11 @@
 use std::time::{Duration, Instant};
 
+mod bellek;
+
+use bellek::BellekOlcer;
 use serde_json::json;
 use tao::{
-    event::{Event, StartCause, WindowEvent},
+    event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy},
     window::{Window, WindowBuilder},
 };
@@ -16,6 +19,7 @@ const ANA_SAYFA: &str = "https://duckduckgo.com";
 const ARAC_CUBUGU_YUKSEKLIK: f64 = 80.0;
 const UYKU_SURESI: Duration = Duration::from_secs(120);
 const KONTROL_ARALIGI: Duration = Duration::from_secs(15);
+const BELLEK_ARALIGI: Duration = Duration::from_secs(5);
 
 /// Webview işleyicilerinden event loop'a giden olaylar
 enum UserEvent {
@@ -41,6 +45,8 @@ struct Uygulama {
     sekmeler: Vec<Sekme>,
     aktif: usize,
     sonraki_id: usize,
+    olcer: BellekOlcer,
+    bellek_mb: u64,
 }
 
 /// Girilen metni URL'e çevirir; URL değilse DuckDuckGo'da arar
@@ -162,7 +168,7 @@ impl Uygulama {
             .iter()
             .map(|s| json!({ "id": s.id, "title": s.baslik, "url": s.url, "sleeping": s.view.is_none() }))
             .collect();
-        let js = format!("window.setTabs({}, {})", json!(liste), self.aktif);
+        let js = format!("window.setTabs({}, {}, {})", json!(liste), self.aktif, self.bellek_mb);
         let _ = self.arac_cubugu.evaluate_script(&js);
     }
 
@@ -216,6 +222,11 @@ impl Uygulama {
         }
     }
 
+    fn bellegi_yenile(&mut self) {
+        self.bellek_mb = self.olcer.toplam_mb();
+        self.arayuzu_guncelle();
+    }
+
     fn yeniden_boyutlandir(&self) {
         let _ = self.arac_cubugu.set_bounds(self.arac_alani());
         let alan = self.icerik_alani();
@@ -256,13 +267,24 @@ fn main() {
         sekmeler: Vec::new(),
         aktif: 0,
         sonraki_id: 0,
+        olcer: BellekOlcer::new(),
+        bellek_mb: 0,
     };
     app.sekme_ac(ANA_SAYFA);
 
+    let (mut son_uyku, mut son_bellek) = (Instant::now(), Instant::now());
     event_loop.run(move |olay, _, kontrol| {
-        *kontrol = ControlFlow::WaitUntil(Instant::now() + KONTROL_ARALIGI);
+        // Olaylar sürekli gelse de zamanlı işler aksamasın
+        if son_uyku.elapsed() >= KONTROL_ARALIGI {
+            son_uyku = Instant::now();
+            app.uyut();
+        }
+        if son_bellek.elapsed() >= BELLEK_ARALIGI {
+            son_bellek = Instant::now();
+            app.bellegi_yenile();
+        }
+        *kontrol = ControlFlow::WaitUntil((son_uyku + KONTROL_ARALIGI).min(son_bellek + BELLEK_ARALIGI));
         match olay {
-            Event::NewEvents(StartCause::ResumeTimeReached { .. }) => app.uyut(),
             Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => *kontrol = ControlFlow::Exit,
             Event::WindowEvent { event: WindowEvent::Resized(_), .. } => app.yeniden_boyutlandir(),
             Event::UserEvent(UserEvent::Ipc(m)) => app.ipc(&m),

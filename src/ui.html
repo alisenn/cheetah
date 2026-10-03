@@ -18,6 +18,7 @@
   button { background: none; border: 0; color: inherit; width: 30px; height: 30px; border-radius: 50%; font-size: 15px; cursor: pointer; }
   #url { flex: 1; height: 30px; padding: 0 14px; border: 0; border-radius: 15px; outline: none;
          background: #1e1f22; color: inherit; font-size: 13px; user-select: text; }
+  #mem { padding: 0 10px; font-size: 12px; opacity: .75; white-space: nowrap; }
   #url:focus { box-shadow: 0 0 0 2px #6b9cff; }
 </style>
 </head>
@@ -28,6 +29,7 @@
   <button id="fwd" title="İleri">&#8594;</button>
   <button id="reload" title="Yenile">&#10227;</button>
   <input id="url" placeholder="Ara veya adres gir" spellcheck="false" autocomplete="off">
+  <span id="mem" title="wolf ve webview süreçlerinin toplam belleği (yaklaşık)"></span>
 </div>
 <script>
   const send = m => window.ipc.postMessage(m);
@@ -35,7 +37,7 @@
   const url = document.getElementById('url');
 
   // Rust'tan gelen sekme listesini çiz
-  window.setTabs = (tabs, active) => {
+  window.setTabs = (tabs, active, mb) => {
     strip.innerHTML = '';
     tabs.forEach((t, i) => {
       const el = document.createElement('div');
@@ -57,6 +59,8 @@
     plus.textContent = '+';
     plus.onclick = () => send('new');
     strip.append(plus);
+    const uyanik = tabs.filter(t => !t.sleeping).length;
+    document.getElementById('mem').textContent = (mb ? '~' + mb + ' MB · ' : '') + uyanik + '/' + tabs.length + ' uyanık';
     if (document.activeElement !== url && tabs[active]) url.value = tabs[active].url;
   };
 
