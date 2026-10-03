@@ -307,7 +307,13 @@ fn main() {
         next_id: 0,
         bookmarks: bookmarks::load(),
     };
-    app.open_tab(HOME_URL);
+    let mut urls: Vec<String> = std::env::args().skip(1).map(|arg| resolve_input(&arg)).collect();
+    if urls.is_empty() {
+        urls.push(HOME_URL.to_string());
+    }
+    for url in &urls {
+        app.open_tab(url);
+    }
 
     let mut last_sleep_check = Instant::now();
     event_loop.run(move |event, _, control_flow| {
