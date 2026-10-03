@@ -1,4 +1,4 @@
-# mry
+# wolf
 
 Çok az RAM kullanan, hafif, açık kaynak masaüstü tarayıcı. Windows, macOS ve Linux'ta çalışır.
 

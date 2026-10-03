@@ -1099,15 +1099,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mry"
-version = "0.1.0"
-dependencies = [
- "serde_json",
- "tao",
- "wry",
-]
-
-[[package]]
 name = "ndk"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2491,6 +2482,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "wolf"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "tao",
+ "wry",
 ]
 
 [[package]]
