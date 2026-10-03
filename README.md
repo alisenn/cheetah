@@ -14,8 +14,9 @@ wolf has no rendering engine of its own. It uses [`tao`](https://github.com/taur
 - Tab titles and URLs follow the page
 - RAM saving: background tabs idle for 120 s have their webview destroyed (URL and title are kept) and are
   recreated when you switch back. Sleeping tabs are shown dimmed and in italics
-- Memory indicator: total RAM of wolf plus its webview processes and the awake/total tab count, shown right of
-  the address bar
+- Bookmark bar: star button to bookmark or unbookmark the current page, click to open, right-click to remove.
+  Stored as JSON in the OS config directory (`wolf/bookmarks.json`)
+- Import: the Import button copies the bookmark bar from Chrome, Edge, Brave, Chromium and Vivaldi (all profiles)
 - Dark theme
 
 ## Run
@@ -33,7 +34,7 @@ GDK_BACKEND=x11 cargo run --release
 
 ## Roadmap
 
-- [ ] Import bookmarks, history and logins from other browsers
+- [ ] Import from Firefox and Safari, plus history
 - [ ] Total memory budget (sleep the oldest tabs when exceeded)
 - [ ] Pin a tab so it never sleeps
 - [ ] Shortcuts (Ctrl/Cmd+T, W, L, R)

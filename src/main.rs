@@ -1,8 +1,8 @@
-mod memory;
+mod bookmarks;
 
 use std::time::{Duration, Instant};
 
-use memory::MemoryMeter;
+use bookmarks::Bookmark;
 use serde_json::json;
 use tao::{
     event::{Event, WindowEvent},
@@ -16,10 +16,9 @@ use wry::{
 
 const UI_HTML: &str = include_str!("ui.html");
 const HOME_URL: &str = "https://duckduckgo.com";
-const TOOLBAR_HEIGHT: f64 = 80.0;
+const TOOLBAR_HEIGHT: f64 = 108.0;
 const SLEEP_AFTER: Duration = Duration::from_secs(120);
 const SLEEP_CHECK_INTERVAL: Duration = Duration::from_secs(15);
-const MEMORY_INTERVAL: Duration = Duration::from_secs(10);
 
 enum UserEvent {
     Ipc(String),
@@ -43,8 +42,7 @@ struct App {
     tabs: Vec<Tab>,
     active: usize,
     next_id: usize,
-    meter: MemoryMeter,
-    memory_mb: u64,
+    bookmarks: Vec<Bookmark>,
 }
 
 fn resolve_input(input: &str) -> String {
@@ -165,8 +163,49 @@ impl App {
             .iter()
             .map(|t| json!({ "id": t.id, "title": t.title, "url": t.url, "sleeping": t.view.is_none() }))
             .collect();
-        let script = format!("window.setTabs({}, {}, {})", json!(tabs), self.active, self.memory_mb);
+        let script = format!("window.setTabs({}, {})", json!(tabs), self.active);
         let _ = self.toolbar.evaluate_script(&script);
+    }
+
+    fn push_bookmarks(&self) {
+        let script = format!("window.setBookmarks({})", json!(self.bookmarks));
+        let _ = self.toolbar.evaluate_script(&script);
+    }
+
+    fn push_status(&self, text: &str) {
+        let script = format!("window.setStatus({})", json!(text));
+        let _ = self.toolbar.evaluate_script(&script);
+    }
+
+    fn toggle_bookmark(&mut self) {
+        let tab = &self.tabs[self.active];
+        if let Some(index) = self.bookmarks.iter().position(|b| b.url == tab.url) {
+            self.bookmarks.remove(index);
+        } else {
+            let title = if tab.title.is_empty() { tab.url.clone() } else { tab.title.clone() };
+            self.bookmarks.push(Bookmark { title, url: tab.url.clone() });
+        }
+        bookmarks::save(&self.bookmarks);
+        self.push_bookmarks();
+    }
+
+    fn import_bookmarks(&mut self) {
+        let result = bookmarks::import_all(&mut self.bookmarks);
+        if result.browsers.is_empty() {
+            self.push_status("No bookmarks found in Chrome, Edge, Brave, Chromium or Vivaldi");
+            return;
+        }
+        bookmarks::save(&self.bookmarks);
+        self.push_bookmarks();
+        self.push_status(&format!("Imported {} new from {}", result.added, result.browsers.join(", ")));
+    }
+
+    fn navigate(&mut self, url: String) {
+        if let Some(view) = &self.tabs[self.active].view {
+            let _ = view.load_url(&url);
+        }
+        self.tabs[self.active].url = url;
+        self.push_state();
     }
 
     fn handle_ipc(&mut self, message: &str) {
@@ -175,8 +214,11 @@ impl App {
             "ready" => {
                 self.toolbar_ready = true;
                 self.push_state();
+                self.push_bookmarks();
             }
             "new" => self.open_tab(HOME_URL),
+            "star" => self.toggle_bookmark(),
+            "import" => self.import_bookmarks(),
             "back" => {
                 let _ = active_view.map(|v| v.evaluate_script("history.back()"));
             }
@@ -188,12 +230,13 @@ impl App {
             }
             other => {
                 if let Some(input) = other.strip_prefix("go:") {
-                    let url = resolve_input(input);
-                    if let Some(view) = active_view {
-                        let _ = view.load_url(&url);
-                    }
-                    self.tabs[self.active].url = url;
-                    self.push_state();
+                    self.navigate(resolve_input(input));
+                } else if let Some(url) = other.strip_prefix("open:") {
+                    self.navigate(url.to_string());
+                } else if let Some(url) = other.strip_prefix("unbookmark:") {
+                    self.bookmarks.retain(|b| b.url != url);
+                    bookmarks::save(&self.bookmarks);
+                    self.push_bookmarks();
                 } else if let Some(id) = other.strip_prefix("switch:").and_then(|s| s.parse::<usize>().ok()) {
                     if let Some(index) = self.tabs.iter().position(|t| t.id == id) {
                         self.activate(index);
@@ -214,14 +257,6 @@ impl App {
             }
         }
         if changed {
-            self.push_state();
-        }
-    }
-
-    fn refresh_memory(&mut self) {
-        let mb = self.meter.total_mb();
-        if mb != self.memory_mb {
-            self.memory_mb = mb;
             self.push_state();
         }
     }
@@ -266,24 +301,17 @@ fn main() {
         tabs: Vec::new(),
         active: 0,
         next_id: 0,
-        meter: MemoryMeter::new(),
-        memory_mb: 0,
+        bookmarks: bookmarks::load(),
     };
     app.open_tab(HOME_URL);
 
-    let (mut last_sleep_check, mut last_memory_check) = (Instant::now(), Instant::now());
+    let mut last_sleep_check = Instant::now();
     event_loop.run(move |event, _, control_flow| {
         if last_sleep_check.elapsed() >= SLEEP_CHECK_INTERVAL {
             last_sleep_check = Instant::now();
             app.sleep_idle_tabs();
         }
-        if last_memory_check.elapsed() >= MEMORY_INTERVAL {
-            last_memory_check = Instant::now();
-            app.refresh_memory();
-        }
-        *control_flow = ControlFlow::WaitUntil(
-            (last_sleep_check + SLEEP_CHECK_INTERVAL).min(last_memory_check + MEMORY_INTERVAL),
-        );
+        *control_flow = ControlFlow::WaitUntil(last_sleep_check + SLEEP_CHECK_INTERVAL);
         match event {
             Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => *control_flow = ControlFlow::Exit,
             Event::WindowEvent { event: WindowEvent::Resized(_), .. } => app.resize(),

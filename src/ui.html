@@ -18,7 +18,13 @@
   button { background: none; border: 0; color: inherit; width: 30px; height: 30px; border-radius: 50%; font-size: 15px; cursor: pointer; }
   #url { flex: 1; height: 30px; padding: 0 14px; border: 0; border-radius: 15px; outline: none;
          background: #1e1f22; color: inherit; font-size: 13px; user-select: text; }
-  #mem { padding: 0 10px; font-size: 12px; opacity: .75; white-space: nowrap; }
+  #bm { display: flex; align-items: center; gap: 2px; height: 28px; padding: 0 8px; overflow: hidden; background: #2b2d31; }
+  .bm { max-width: 160px; padding: 3px 8px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; border-radius: 6px; font-size: 12px; cursor: pointer; flex: none; }
+  .bm:hover, #import:hover { background: #4a4c52; }
+  #spacer { flex: 1; }
+  #status { font-size: 12px; opacity: .7; white-space: nowrap; padding: 0 8px; }
+  #import { width: auto; height: 22px; padding: 0 8px; border-radius: 6px; font-size: 12px; flex: none; }
+  #star.on { color: #ffcc4d; }
   #url:focus { box-shadow: 0 0 0 2px #6b9cff; }
 </style>
 </head>
@@ -29,13 +35,53 @@
   <button id="fwd" title="Forward">&#8594;</button>
   <button id="reload" title="Reload">&#10227;</button>
   <input id="url" placeholder="Search or enter address" spellcheck="false" autocomplete="off">
-  <span id="mem" title="Total memory of wolf and its webview processes (approximate)"></span>
+  <button id="star" title="Bookmark this page">&#9734;</button>
+</div>
+<div id="bm">
+  <span id="spacer"></span>
+  <span id="status"></span>
+  <button id="import" title="Import bookmark bar from Chrome, Edge, Brave, Chromium and Vivaldi">Import</button>
 </div>
 <script>
   const send = m => window.ipc.postMessage(m);
   const strip = document.getElementById('strip');
   const url = document.getElementById('url');
-  window.setTabs = (tabs, active, mb) => {
+  const bm = document.getElementById('bm');
+  const spacer = document.getElementById('spacer');
+  const star = document.getElementById('star');
+  const status = document.getElementById('status');
+  let bookmarks = [];
+  let currentUrl = '';
+  let statusTimer = 0;
+
+  const refreshStar = () => {
+    const on = bookmarks.some(b => b.url === currentUrl);
+    star.classList.toggle('on', on);
+    star.innerHTML = on ? '&#9733;' : '&#9734;';
+  };
+
+  window.setBookmarks = list => {
+    bookmarks = list;
+    bm.querySelectorAll('.bm').forEach(el => el.remove());
+    list.forEach(b => {
+      const el = document.createElement('div');
+      el.className = 'bm';
+      el.textContent = b.title;
+      el.title = b.url;
+      el.onclick = () => send('open:' + b.url);
+      el.oncontextmenu = e => { e.preventDefault(); send('unbookmark:' + b.url); };
+      bm.insertBefore(el, spacer);
+    });
+    refreshStar();
+  };
+
+  window.setStatus = text => {
+    status.textContent = text;
+    clearTimeout(statusTimer);
+    statusTimer = setTimeout(() => { status.textContent = ''; }, 6000);
+  };
+
+  window.setTabs = (tabs, active) => {
     strip.innerHTML = '';
     tabs.forEach((t, i) => {
       const el = document.createElement('div');
@@ -57,8 +103,8 @@
     plus.textContent = '+';
     plus.onclick = () => send('new');
     strip.append(plus);
-    const uyanik = tabs.filter(t => !t.sleeping).length;
-    document.getElementById('mem').textContent = (mb ? '~' + mb + ' MB · ' : '') + uyanik + '/' + tabs.length + ' awake';
+    currentUrl = tabs[active] ? tabs[active].url : '';
+    refreshStar();
     if (document.activeElement !== url && tabs[active]) url.value = tabs[active].url;
   };
 
@@ -69,6 +115,8 @@
   document.getElementById('back').onclick = () => send('back');
   document.getElementById('fwd').onclick = () => send('forward');
   document.getElementById('reload').onclick = () => send('reload');
+  star.onclick = () => send('star');
+  document.getElementById('import').onclick = () => send('import');
   send('ready');
 </script>
 </body>
