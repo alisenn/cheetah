@@ -1,8 +1,8 @@
+mod memory;
+
 use std::time::{Duration, Instant};
 
-mod bellek;
-
-use bellek::BellekOlcer;
+use memory::MemoryMeter;
 use serde_json::json;
 use tao::{
     event::{Event, WindowEvent},
@@ -15,223 +15,222 @@ use wry::{
 };
 
 const UI_HTML: &str = include_str!("ui.html");
-const ANA_SAYFA: &str = "https://duckduckgo.com";
-const ARAC_CUBUGU_YUKSEKLIK: f64 = 80.0;
-const UYKU_SURESI: Duration = Duration::from_secs(120);
-const KONTROL_ARALIGI: Duration = Duration::from_secs(15);
-const BELLEK_ARALIGI: Duration = Duration::from_secs(5);
+const HOME_URL: &str = "https://duckduckgo.com";
+const TOOLBAR_HEIGHT: f64 = 80.0;
+const SLEEP_AFTER: Duration = Duration::from_secs(120);
+const SLEEP_CHECK_INTERVAL: Duration = Duration::from_secs(15);
+const MEMORY_INTERVAL: Duration = Duration::from_secs(10);
 
-/// Webview işleyicilerinden event loop'a giden olaylar
 enum UserEvent {
     Ipc(String),
-    Baslik(usize, String),
-    Adres(usize, String),
+    Title(usize, String),
+    Address(usize, String),
 }
 
-struct Sekme {
+struct Tab {
     id: usize,
     url: String,
-    baslik: String,
-    /// None ise sekme uyuyor demektir
+    title: String,
     view: Option<WebView>,
-    son_aktif: Instant,
+    last_active: Instant,
 }
 
-struct Uygulama {
-    pencere: Window,
+struct App {
+    window: Window,
     proxy: EventLoopProxy<UserEvent>,
-    arac_cubugu: WebView,
-    arac_hazir: bool,
-    sekmeler: Vec<Sekme>,
-    aktif: usize,
-    sonraki_id: usize,
-    olcer: BellekOlcer,
-    bellek_mb: u64,
+    toolbar: WebView,
+    toolbar_ready: bool,
+    tabs: Vec<Tab>,
+    active: usize,
+    next_id: usize,
+    meter: MemoryMeter,
+    memory_mb: u64,
 }
 
-/// Girilen metni URL'e çevirir; URL değilse DuckDuckGo'da arar
-fn url_yap(girdi: &str) -> String {
-    let g = girdi.trim();
-    if g.contains("://") {
-        g.to_string()
-    } else if !g.contains(char::is_whitespace) && g.contains('.') {
-        format!("https://{g}")
+fn resolve_input(input: &str) -> String {
+    let text = input.trim();
+    if text.contains("://") {
+        text.to_string()
+    } else if !text.contains(char::is_whitespace) && text.contains('.') {
+        format!("https://{text}")
     } else {
-        let mut q = String::new();
-        for b in g.bytes() {
-            match b {
-                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => q.push(b as char),
-                _ => q.push_str(&format!("%{b:02X}")),
+        let mut query = String::new();
+        for byte in text.bytes() {
+            match byte {
+                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => query.push(byte as char),
+                _ => query.push_str(&format!("%{byte:02X}")),
             }
         }
-        format!("https://duckduckgo.com/?q={q}")
+        format!("https://duckduckgo.com/?q={query}")
     }
 }
 
-impl Uygulama {
-    fn icerik_alani(&self) -> Rect {
-        let boyut = self.pencere.inner_size().to_logical::<f64>(self.pencere.scale_factor());
+impl App {
+    fn window_size(&self) -> tao::dpi::LogicalSize<f64> {
+        self.window.inner_size().to_logical(self.window.scale_factor())
+    }
+
+    fn content_bounds(&self) -> Rect {
+        let size = self.window_size();
         Rect {
-            position: LogicalPosition::new(0.0, ARAC_CUBUGU_YUKSEKLIK).into(),
-            size: LogicalSize::new(boyut.width, (boyut.height - ARAC_CUBUGU_YUKSEKLIK).max(1.0)).into(),
+            position: LogicalPosition::new(0.0, TOOLBAR_HEIGHT).into(),
+            size: LogicalSize::new(size.width, (size.height - TOOLBAR_HEIGHT).max(1.0)).into(),
         }
     }
 
-    fn arac_alani(&self) -> Rect {
-        let boyut = self.pencere.inner_size().to_logical::<f64>(self.pencere.scale_factor());
+    fn toolbar_bounds(&self) -> Rect {
         Rect {
             position: LogicalPosition::new(0.0, 0.0).into(),
-            size: LogicalSize::new(boyut.width, ARAC_CUBUGU_YUKSEKLIK).into(),
+            size: LogicalSize::new(self.window_size().width, TOOLBAR_HEIGHT).into(),
         }
     }
 
-    fn webview_olustur(&self, id: usize, url: &str) -> WebView {
-        let (p1, p2) = (self.proxy.clone(), self.proxy.clone());
+    fn create_view(&self, id: usize, url: &str) -> WebView {
+        let (title_proxy, nav_proxy) = (self.proxy.clone(), self.proxy.clone());
         WebViewBuilder::new()
             .with_url(url)
-            .with_bounds(self.icerik_alani())
-            .with_document_title_changed_handler(move |b| {
-                let _ = p1.send_event(UserEvent::Baslik(id, b));
+            .with_bounds(self.content_bounds())
+            .with_document_title_changed_handler(move |title| {
+                let _ = title_proxy.send_event(UserEvent::Title(id, title));
             })
-            .with_navigation_handler(move |u| {
-                let _ = p2.send_event(UserEvent::Adres(id, u));
+            .with_navigation_handler(move |url| {
+                let _ = nav_proxy.send_event(UserEvent::Address(id, url));
                 true
             })
-            .build_as_child(&self.pencere)
-            .expect("sekme webview'ı oluşturulamadı")
+            .build_as_child(&self.window)
+            .expect("failed to create tab webview")
     }
 
-    fn sekme_ac(&mut self, url: &str) {
-        let id = self.sonraki_id;
-        self.sonraki_id += 1;
-        let view = self.webview_olustur(id, url);
-        self.sekmeler.push(Sekme {
+    fn open_tab(&mut self, url: &str) {
+        let id = self.next_id;
+        self.next_id += 1;
+        let view = self.create_view(id, url);
+        self.tabs.push(Tab {
             id,
             url: url.to_string(),
-            baslik: String::new(),
+            title: String::new(),
             view: Some(view),
-            son_aktif: Instant::now(),
+            last_active: Instant::now(),
         });
-        self.degistir(self.sekmeler.len() - 1);
+        self.activate(self.tabs.len() - 1);
     }
 
-    /// Aktif sekmeyi değiştirir; uyuyorsa webview'ı yeniden oluşturur
-    fn degistir(&mut self, yeni: usize) {
-        if let Some(eski) = self.sekmeler.get_mut(self.aktif)
-            && self.aktif != yeni
+    fn activate(&mut self, index: usize) {
+        if let Some(previous) = self.tabs.get_mut(self.active)
+            && self.active != index
         {
-            eski.son_aktif = Instant::now();
-            if let Some(v) = &eski.view {
-                let _ = v.set_visible(false);
+            previous.last_active = Instant::now();
+            if let Some(view) = &previous.view {
+                let _ = view.set_visible(false);
             }
         }
-        self.aktif = yeni;
-        let alan = self.icerik_alani();
-        let (id, url) = (self.sekmeler[yeni].id, self.sekmeler[yeni].url.clone());
-        if self.sekmeler[yeni].view.is_none() {
-            let v = self.webview_olustur(id, &url);
-            self.sekmeler[yeni].view = Some(v);
+        self.active = index;
+        let bounds = self.content_bounds();
+        let (id, url) = (self.tabs[index].id, self.tabs[index].url.clone());
+        if self.tabs[index].view.is_none() {
+            self.tabs[index].view = Some(self.create_view(id, &url));
         }
-        if let Some(v) = &self.sekmeler[yeni].view {
-            let _ = v.set_bounds(alan);
-            let _ = v.set_visible(true);
-            let _ = v.focus();
+        if let Some(view) = &self.tabs[index].view {
+            let _ = view.set_bounds(bounds);
+            let _ = view.set_visible(true);
+            let _ = view.focus();
         }
-        self.arayuzu_guncelle();
+        self.push_state();
     }
 
-    fn sekme_kapat(&mut self, id: usize) {
-        if self.sekmeler.len() <= 1 {
+    fn close_tab(&mut self, id: usize) {
+        if self.tabs.len() <= 1 {
             return;
         }
-        let Some(i) = self.sekmeler.iter().position(|s| s.id == id) else {
+        let Some(index) = self.tabs.iter().position(|t| t.id == id) else {
             return;
         };
-        let aktif_id = self.sekmeler[self.aktif].id;
-        self.sekmeler.remove(i);
-        if aktif_id == id {
-            // Kapanan aktifse komşu sekmeye geç
-            self.aktif = usize::MAX;
-            self.degistir(i.min(self.sekmeler.len() - 1));
+        let active_id = self.tabs[self.active].id;
+        self.tabs.remove(index);
+        if active_id == id {
+            self.active = usize::MAX;
+            self.activate(index.min(self.tabs.len() - 1));
         } else {
-            self.aktif = self.sekmeler.iter().position(|s| s.id == aktif_id).unwrap_or(0);
-            self.arayuzu_guncelle();
+            self.active = self.tabs.iter().position(|t| t.id == active_id).unwrap_or(0);
+            self.push_state();
         }
     }
 
-    fn arayuzu_guncelle(&self) {
-        if !self.arac_hazir {
+    fn push_state(&self) {
+        if !self.toolbar_ready {
             return;
         }
-        let liste: Vec<_> = self
-            .sekmeler
+        let tabs: Vec<_> = self
+            .tabs
             .iter()
-            .map(|s| json!({ "id": s.id, "title": s.baslik, "url": s.url, "sleeping": s.view.is_none() }))
+            .map(|t| json!({ "id": t.id, "title": t.title, "url": t.url, "sleeping": t.view.is_none() }))
             .collect();
-        let js = format!("window.setTabs({}, {}, {})", json!(liste), self.aktif, self.bellek_mb);
-        let _ = self.arac_cubugu.evaluate_script(&js);
+        let script = format!("window.setTabs({}, {}, {})", json!(tabs), self.active, self.memory_mb);
+        let _ = self.toolbar.evaluate_script(&script);
     }
 
-    fn ipc(&mut self, mesaj: &str) {
-        let aktif_view = self.sekmeler[self.aktif].view.as_ref();
-        match mesaj {
+    fn handle_ipc(&mut self, message: &str) {
+        let active_view = self.tabs[self.active].view.as_ref();
+        match message {
             "ready" => {
-                self.arac_hazir = true;
-                self.arayuzu_guncelle();
+                self.toolbar_ready = true;
+                self.push_state();
             }
-            "new" => self.sekme_ac(ANA_SAYFA),
+            "new" => self.open_tab(HOME_URL),
             "back" => {
-                let _ = aktif_view.map(|v| v.evaluate_script("history.back()"));
+                let _ = active_view.map(|v| v.evaluate_script("history.back()"));
             }
             "forward" => {
-                let _ = aktif_view.map(|v| v.evaluate_script("history.forward()"));
+                let _ = active_view.map(|v| v.evaluate_script("history.forward()"));
             }
             "reload" => {
-                let _ = aktif_view.map(|v| v.reload());
+                let _ = active_view.map(|v| v.reload());
             }
-            m => {
-                if let Some(girdi) = m.strip_prefix("go:") {
-                    let url = url_yap(girdi);
-                    if let Some(v) = aktif_view {
-                        let _ = v.load_url(&url);
+            other => {
+                if let Some(input) = other.strip_prefix("go:") {
+                    let url = resolve_input(input);
+                    if let Some(view) = active_view {
+                        let _ = view.load_url(&url);
                     }
-                    self.sekmeler[self.aktif].url = url;
-                    self.arayuzu_guncelle();
-                } else if let Some(id) = m.strip_prefix("switch:").and_then(|s| s.parse::<usize>().ok()) {
-                    if let Some(i) = self.sekmeler.iter().position(|s| s.id == id) {
-                        self.degistir(i);
+                    self.tabs[self.active].url = url;
+                    self.push_state();
+                } else if let Some(id) = other.strip_prefix("switch:").and_then(|s| s.parse::<usize>().ok()) {
+                    if let Some(index) = self.tabs.iter().position(|t| t.id == id) {
+                        self.activate(index);
                     }
-                } else if let Some(id) = m.strip_prefix("close:").and_then(|s| s.parse::<usize>().ok()) {
-                    self.sekme_kapat(id);
+                } else if let Some(id) = other.strip_prefix("close:").and_then(|s| s.parse::<usize>().ok()) {
+                    self.close_tab(id);
                 }
             }
         }
     }
 
-    /// Uzun süredir boşta duran arka plan sekmelerinin webview'ını yok eder
-    fn uyut(&mut self) {
-        let mut degisti = false;
-        for (i, s) in self.sekmeler.iter_mut().enumerate() {
-            if i != self.aktif && s.view.is_some() && s.son_aktif.elapsed() >= UYKU_SURESI {
-                s.view = None;
-                degisti = true;
+    fn sleep_idle_tabs(&mut self) {
+        let mut changed = false;
+        for (index, tab) in self.tabs.iter_mut().enumerate() {
+            if index != self.active && tab.view.is_some() && tab.last_active.elapsed() >= SLEEP_AFTER {
+                tab.view = None;
+                changed = true;
             }
         }
-        if degisti {
-            self.arayuzu_guncelle();
+        if changed {
+            self.push_state();
         }
     }
 
-    fn bellegi_yenile(&mut self) {
-        self.bellek_mb = self.olcer.toplam_mb();
-        self.arayuzu_guncelle();
+    fn refresh_memory(&mut self) {
+        let mb = self.meter.total_mb();
+        if mb != self.memory_mb {
+            self.memory_mb = mb;
+            self.push_state();
+        }
     }
 
-    fn yeniden_boyutlandir(&self) {
-        let _ = self.arac_cubugu.set_bounds(self.arac_alani());
-        let alan = self.icerik_alani();
-        for v in self.sekmeler.iter().filter_map(|s| s.view.as_ref()) {
-            let _ = v.set_bounds(alan);
+    fn resize(&self) {
+        let _ = self.toolbar.set_bounds(self.toolbar_bounds());
+        let bounds = self.content_bounds();
+        for view in self.tabs.iter().filter_map(|t| t.view.as_ref()) {
+            let _ = view.set_bounds(bounds);
         }
     }
 }
@@ -239,65 +238,66 @@ impl Uygulama {
 fn main() {
     let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
     let proxy = event_loop.create_proxy();
-    let pencere = WindowBuilder::new()
+    let window = WindowBuilder::new()
         .with_title("wolf")
         .with_inner_size(tao::dpi::LogicalSize::new(1200.0, 800.0))
         .build(&event_loop)
-        .expect("pencere oluşturulamadı");
+        .expect("failed to create window");
 
     let ipc_proxy = proxy.clone();
-    let boyut = pencere.inner_size().to_logical::<f64>(pencere.scale_factor());
-    let arac_cubugu = WebViewBuilder::new()
+    let width = window.inner_size().to_logical::<f64>(window.scale_factor()).width;
+    let toolbar = WebViewBuilder::new()
         .with_html(UI_HTML)
         .with_bounds(Rect {
             position: LogicalPosition::new(0.0, 0.0).into(),
-            size: LogicalSize::new(boyut.width, ARAC_CUBUGU_YUKSEKLIK).into(),
+            size: LogicalSize::new(width, TOOLBAR_HEIGHT).into(),
         })
-        .with_ipc_handler(move |istek| {
-            let _ = ipc_proxy.send_event(UserEvent::Ipc(istek.body().clone()));
+        .with_ipc_handler(move |request| {
+            let _ = ipc_proxy.send_event(UserEvent::Ipc(request.body().clone()));
         })
-        .build_as_child(&pencere)
-        .expect("araç çubuğu oluşturulamadı");
+        .build_as_child(&window)
+        .expect("failed to create toolbar");
 
-    let mut app = Uygulama {
-        pencere,
+    let mut app = App {
+        window,
         proxy,
-        arac_cubugu,
-        arac_hazir: false,
-        sekmeler: Vec::new(),
-        aktif: 0,
-        sonraki_id: 0,
-        olcer: BellekOlcer::new(),
-        bellek_mb: 0,
+        toolbar,
+        toolbar_ready: false,
+        tabs: Vec::new(),
+        active: 0,
+        next_id: 0,
+        meter: MemoryMeter::new(),
+        memory_mb: 0,
     };
-    app.sekme_ac(ANA_SAYFA);
+    app.open_tab(HOME_URL);
 
-    let (mut son_uyku, mut son_bellek) = (Instant::now(), Instant::now());
-    event_loop.run(move |olay, _, kontrol| {
-        // Olaylar sürekli gelse de zamanlı işler aksamasın
-        if son_uyku.elapsed() >= KONTROL_ARALIGI {
-            son_uyku = Instant::now();
-            app.uyut();
+    let (mut last_sleep_check, mut last_memory_check) = (Instant::now(), Instant::now());
+    event_loop.run(move |event, _, control_flow| {
+        if last_sleep_check.elapsed() >= SLEEP_CHECK_INTERVAL {
+            last_sleep_check = Instant::now();
+            app.sleep_idle_tabs();
         }
-        if son_bellek.elapsed() >= BELLEK_ARALIGI {
-            son_bellek = Instant::now();
-            app.bellegi_yenile();
+        if last_memory_check.elapsed() >= MEMORY_INTERVAL {
+            last_memory_check = Instant::now();
+            app.refresh_memory();
         }
-        *kontrol = ControlFlow::WaitUntil((son_uyku + KONTROL_ARALIGI).min(son_bellek + BELLEK_ARALIGI));
-        match olay {
-            Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => *kontrol = ControlFlow::Exit,
-            Event::WindowEvent { event: WindowEvent::Resized(_), .. } => app.yeniden_boyutlandir(),
-            Event::UserEvent(UserEvent::Ipc(m)) => app.ipc(&m),
-            Event::UserEvent(UserEvent::Baslik(id, b)) => {
-                if let Some(s) = app.sekmeler.iter_mut().find(|s| s.id == id) {
-                    s.baslik = b;
-                    app.arayuzu_guncelle();
+        *control_flow = ControlFlow::WaitUntil(
+            (last_sleep_check + SLEEP_CHECK_INTERVAL).min(last_memory_check + MEMORY_INTERVAL),
+        );
+        match event {
+            Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => *control_flow = ControlFlow::Exit,
+            Event::WindowEvent { event: WindowEvent::Resized(_), .. } => app.resize(),
+            Event::UserEvent(UserEvent::Ipc(message)) => app.handle_ipc(&message),
+            Event::UserEvent(UserEvent::Title(id, title)) => {
+                if let Some(tab) = app.tabs.iter_mut().find(|t| t.id == id) {
+                    tab.title = title;
+                    app.push_state();
                 }
             }
-            Event::UserEvent(UserEvent::Adres(id, u)) => {
-                if let Some(s) = app.sekmeler.iter_mut().find(|s| s.id == id) {
-                    s.url = u;
-                    app.arayuzu_guncelle();
+            Event::UserEvent(UserEvent::Address(id, url)) => {
+                if let Some(tab) = app.tabs.iter_mut().find(|t| t.id == id) {
+                    tab.url = url;
+                    app.push_state();
                 }
             }
             _ => {}

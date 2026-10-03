@@ -1,47 +1,47 @@
 # wolf
 
-Çok az RAM kullanan, hafif, açık kaynak masaüstü tarayıcı. Windows, macOS ve Linux'ta çalışır.
+A lightweight, open-source desktop browser that uses very little RAM. Runs on Windows, macOS and Linux.
 
-Kendi render motorunu yazmaz; [`tao`](https://github.com/tauri-apps/tao) (pencere) ve
-[`wry`](https://github.com/tauri-apps/wry) (sistemin kendi WebView'ı) kullanır. Tek process, tek pencere:
-üstte araç çubuğu webview'ı (sekme şeridi + adres çubuğu), altında sekme başına bir webview.
+wolf has no rendering engine of its own. It uses [`tao`](https://github.com/tauri-apps/tao) for the window and
+[`wry`](https://github.com/tauri-apps/wry) for the system WebView. One process, one window: a toolbar webview
+(tab strip + address bar) on top and one webview per tab below it.
 
-## Özellikler
+## Features
 
-- Sekme açma, kapatma, geçiş (son sekme kapatılamaz)
-- Akıllı adres çubuğu: URL ise açar, değilse DuckDuckGo'da arar
-- Geri, ileri, yenile
-- Sekme başlığı ve URL'i sayfadan canlı güncellenir
-- RAM tasarrufu: 120 sn boşta kalan arka plan sekmelerinin webview'ı yok edilir (URL ve başlık saklanır),
-  sekmeye geçince yeniden oluşturulur. Uyuyan sekmeler italik ve soluk görünür
-- Pencere boyutu değişince tüm webview'lar yeniden boyutlanır
-- Bellek göstergesi: adres çubuğunun sağında wolf + webview süreçlerinin toplam RAM'i ve uyanık/toplam sekme sayısı (5 sn'de bir güncellenir)
-- Koyu tema
+- Open, close and switch tabs (the last tab cannot be closed)
+- Smart address bar: opens URLs, searches DuckDuckGo otherwise
+- Back, forward, reload
+- Tab titles and URLs follow the page
+- RAM saving: background tabs idle for 120 s have their webview destroyed (URL and title are kept) and are
+  recreated when you switch back. Sleeping tabs are shown dimmed and in italics
+- Memory indicator: total RAM of wolf plus its webview processes and the awake/total tab count, shown right of
+  the address bar
+- Dark theme
 
-## Çalıştırma
+## Run
 
 ```bash
 cargo run --release
 ```
 
-**Linux:** `libwebkit2gtk-4.1-dev` ve `libgtk-3-dev` kurulu olmalı. `build_as_child` Wayland'de çalışmayabilir:
+**Linux:** needs `libwebkit2gtk-4.1-dev` and `libgtk-3-dev`. `build_as_child` may not work on Wayland:
 
 ```bash
 sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev
 GDK_BACKEND=x11 cargo run --release
 ```
 
-## Yol haritası
+## Roadmap
 
-- [ ] Sekme başına bellek ve "bu sekmeyi uyutma" (sabitleme)
-- [ ] Toplam bellek bütçesi (aşınca en eski sekmeleri uyut)
-- [ ] Kısayollar (Ctrl/Cmd+T, W, L, R)
-- [ ] Yer imleri ve geçmiş
-- [ ] Sekme sürükle-bırak sıralama
-- [ ] Ayarlanabilir arama motoru ve uyku süresi
-- [ ] Sayfa içi arama, indirme yönetimi
-- [ ] Oturumu geri yükleme
+- [ ] Import bookmarks, history and logins from other browsers
+- [ ] Total memory budget (sleep the oldest tabs when exceeded)
+- [ ] Pin a tab so it never sleeps
+- [ ] Shortcuts (Ctrl/Cmd+T, W, L, R)
+- [ ] Tab drag and drop
+- [ ] Configurable search engine and sleep time
+- [ ] Find in page, download manager
+- [ ] Session restore
 
-## Lisans
+## License
 
 MIT

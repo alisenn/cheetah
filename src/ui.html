@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="tr">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <style>
@@ -25,18 +25,16 @@
 <body>
 <div id="strip"></div>
 <div id="bar">
-  <button id="back" title="Geri">&#8592;</button>
-  <button id="fwd" title="İleri">&#8594;</button>
-  <button id="reload" title="Yenile">&#10227;</button>
-  <input id="url" placeholder="Ara veya adres gir" spellcheck="false" autocomplete="off">
-  <span id="mem" title="wolf ve webview süreçlerinin toplam belleği (yaklaşık)"></span>
+  <button id="back" title="Back">&#8592;</button>
+  <button id="fwd" title="Forward">&#8594;</button>
+  <button id="reload" title="Reload">&#10227;</button>
+  <input id="url" placeholder="Search or enter address" spellcheck="false" autocomplete="off">
+  <span id="mem" title="Total memory of wolf and its webview processes (approximate)"></span>
 </div>
 <script>
   const send = m => window.ipc.postMessage(m);
   const strip = document.getElementById('strip');
   const url = document.getElementById('url');
-
-  // Rust'tan gelen sekme listesini çiz
   window.setTabs = (tabs, active, mb) => {
     strip.innerHTML = '';
     tabs.forEach((t, i) => {
@@ -46,7 +44,7 @@
       el.onclick = () => send('switch:' + t.id);
       const title = document.createElement('span');
       title.className = 't';
-      title.textContent = t.title || t.url || 'Yeni sekme';
+      title.textContent = t.title || t.url || 'New tab';
       const x = document.createElement('span');
       x.className = 'x';
       x.textContent = '×';
@@ -60,7 +58,7 @@
     plus.onclick = () => send('new');
     strip.append(plus);
     const uyanik = tabs.filter(t => !t.sleeping).length;
-    document.getElementById('mem').textContent = (mb ? '~' + mb + ' MB · ' : '') + uyanik + '/' + tabs.length + ' uyanık';
+    document.getElementById('mem').textContent = (mb ? '~' + mb + ' MB · ' : '') + uyanik + '/' + tabs.length + ' awake';
     if (document.activeElement !== url && tabs[active]) url.value = tabs[active].url;
   };
 
